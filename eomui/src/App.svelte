@@ -402,6 +402,18 @@
   const BT_READINGS_CHAR = "0000696a-0000-1000-8000-00805f9b34fb";
   const BT_CONTROL_CHAR = "0000696b-0000-1000-8000-00805f9b34fb";
   const BT_CONFIG_CHAR = "0000696c-0000-1000-8000-00805f9b34fb";
+
+  // Web Bluetooth allows one GATT operation at a time; chain writes so none get dropped.
+  let btWriteQueue: Promise<void> = Promise.resolve();
+  function btWrite(data: Uint8Array): Promise<void> {
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const next = btWriteQueue.then(() => {
+      if (!btDeviceId) throw new Error("Not connected via Bluetooth");
+      return BleClient.write(btDeviceId, BT_SERVICE_UUID, BT_CONTROL_CHAR, view);
+    });
+    btWriteQueue = next.catch(() => {}); // keep the queue alive after an error
+    return next;
+  }
   let socket = $state() as WebSocket;
 
   let showSettings = $state(false);
@@ -754,8 +766,7 @@
         0x3A, // Separator ':'
         ...new TextEncoder().encode(value.toString()),
       ]);
-      const dataView = new DataView(data.buffer);
-      BleClient.write(btDeviceId, BT_SERVICE_UUID, BT_CONTROL_CHAR, dataView)
+      btWrite(data)
         .then(() => {
           console.log(`Sent ${setting_name} change via Bluetooth:`,  value);
         }).catch((error: any) => {
@@ -786,8 +797,7 @@
         ]);
       }
       console.log(`sending ${setting_name} change via Bluetooth:`, btData);
-      const dataView = new DataView(btData.buffer);
-      BleClient.write(btDeviceId, BT_SERVICE_UUID, BT_CONTROL_CHAR, dataView).then(() => {
+      btWrite(btData).then(() => {
         console.log(`Sent ${setting_name} change via Bluetooth:`, value);
       }).catch((error: any) => {
         console.error('Error sending setting change via Bluetooth:', error);
@@ -913,8 +923,7 @@
   function sendConfigRequest() {
     if (isBtConnected && btDeviceId) {
       const data = new Uint8Array([0x03]);
-      const dataView = new DataView(data.buffer);
-      BleClient.write(btDeviceId, BT_SERVICE_UUID, BT_CONTROL_CHAR, dataView)
+      btWrite(data)
         .then(() => {
           console.log('Sent configuration request via Bluetooth.');
         }).catch((error: any) => {
@@ -1144,7 +1153,7 @@
               const configObj = JSON.parse(jsonString);
               for (const [key, val] of Object.entries(configObj)) {
                 if (key in settings) {
-                  settings[key as keyof typeof settings].value = val as number;
+                  settings[key as keyof typeof settings].value = Number(val);
                 }
               }
             } catch (error) {

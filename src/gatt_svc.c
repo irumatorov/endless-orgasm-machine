@@ -304,9 +304,10 @@ static int update_main_chr_access(uint16_t conn_handle, uint16_t attr_handle, st
 
                 ESP_LOGE(TAG, "Setting name: %s, value: %s", setting_name, setting_value);
                 if (set_config_value(setting_name, setting_value, NULL)) {
-                    ESP_LOGD(TAG, "Set config value successfully");
+                    ESP_LOGI(TAG, "Set config value successfully");
+                    config_enqueue_save(1);  // persist, same as the WebSocket configSet path
                 } else {
-                    ESP_LOGD(TAG, "Failed to set config value");
+                    ESP_LOGW(TAG, "Failed to set config value: %s = %s", setting_name, setting_value);
                 }
             } else if (buf[0] == 0x03) {
                 ESP_LOGE(TAG, "Received config dump request");
