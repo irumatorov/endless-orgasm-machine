@@ -1,56 +1,22 @@
-#ifndef __VibrationModeController_h
-#define __VibrationModeController_h
+#ifndef __vibration_mode_controller_h
+#define __vibration_mode_controller_h
 
-#include "config.h"
+#include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef struct vibration_pattern_step {
-    uint8_t pleasure;
-    uint8_t hold_ticks;
-    bool ramp_to;
-} vibration_pattern_step_t;
-
-typedef struct vibration_pattern {
-    size_t step_count;
-    vibration_pattern_step_t steps[];
-} vibration_pattern_t;
-
-typedef float (*vibration_mode_callback_t)(void);
-typedef void (*vibration_mode_tick_func_t)(float pleasure, uint16_t arousal);
-
+// A vibration mode decides how pleasure follows arousal while the device is in control.
 typedef struct vibration_mode_controller {
-    vibration_mode_callback_t start;
-    vibration_mode_callback_t increment;
-    vibration_mode_callback_t stop;
-    vibration_mode_tick_func_t tick;
+    // Called when stimulation (re)starts. Returns the starting pleasure.
+    float (*start)(void);
+    // Called on every update while stimulating. Returns the new pleasure.
+    float (*increment)(void);
+    // Called when an edge is detected. Returns the pleasure to hold during the cooldown.
+    float (*stop)(void);
+    // Called before the above with the current state.
+    void (*tick)(float pleasure, uint16_t arousal);
 } vibration_mode_controller_t;
 
-// Helper Functions
-
-// Returns the increment per tick of a given span:
-//   increment_per_second = (target - start) / time_s
-//   increment_per_tick = increment_per_second / ticks_per_second
-//
-#define calculate_increment(start, target, time_s)                                                 \
-    ((time_s > 0 && Config.update_frequency_hz > 0)                                                \
-         ? ((float)(target - start) / ((float)time_s)) / ((float)Config.update_frequency_hz)                \
-         : 0)
-
-// Vibration Modes
 extern const vibration_mode_controller_t RampStopController;
-extern const vibration_mode_controller_t EnhancementController;
 extern const vibration_mode_controller_t DepletionController;
-extern const vibration_mode_controller_t PatternController;
-
-// Vibration Patterns
-extern const vibration_pattern_t StepPattern;
-extern const vibration_pattern_t WavePattern;
-
-#ifdef __cplusplus
-}
-#endif
+extern const vibration_mode_controller_t EnhancementController;
 
 #endif
