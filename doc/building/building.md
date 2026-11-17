@@ -1,6 +1,24 @@
 # Building an EOM
 
-Todo: build walkthroughs
+## Wiring an analog sensor
+
+The MPXV5100 family needs a 5 V supply and outputs about 0.2 V at rest up to 4.7 V at full
+scale. ESP32 pins only take up to about 3.1 V, so put a voltage divider between the sensor
+output and the ADC pin, for example 10 kΩ from the sensor output to the pin and 20 kΩ from
+the pin to ground (output × 2/3).
+
+|Sensor|Board|
+|---|---|
+|Vs (5 V)|5V / VBUS|
+|GND|GND|
+|Vout|divider, then the pressure pin|
+
+On a DP (differential) sensor connect the plug's tube to the port marked P1 and leave the
+other port open. On the ESP32-S3 N16R8 environment the pressure pin is GPIO 9.
+
+Readings are relative to the pressure at startup, so start the EOM with the plug inflated
+the way you will use it. If the chart saturates, lower `sensor_sensitivity` to widen the
+ADC range, see [Config.json.md](../Config.json.md).
 
 # Example builds:
 

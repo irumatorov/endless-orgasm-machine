@@ -1,45 +1,41 @@
-## Configuration
+# Configuration
 
-Please see `data/config.json` file.
-If a configuration is changed using the UI it will be saved on the device itself.  There is not currently a way to get the device's config.json back to a computer but most of its contents are transmitted via websocket when the UI first connects.  This is logged by the UI in the browser console.  The file at [/data/config.json](/data/config.json) will overwrite any changes previously saved on the ESP32 when ```PlatformIO -> Project Tasks -> esp32dev -> Platform -> Upload Filesystem Image``` is run.
+Settings live in `/spiffs/config.json` on the device. Changes made from the UI are saved there
+automatically. *Upload Filesystem Image* replaces it with your `data/config.json`, so copy
+`data/config.json.example` to `data/config.json` and edit that before uploading. Missing keys
+use the defaults below. Changes to networking and Bluetooth take effect after a restart.
 
-Here is a quick summary of config variables:
-
-|Key|Type|Default|Note|
-|---|----|---|---|
-|`wifi_ssid`|String|""|Your WiFi SSID.|
-|`wifi_key`|String|""|Your WiFi Password.|
-|`wifi_on`|Boolean|false|Enable WiFi and the Websocket server. Cannot be enabled if AzureFang is on.|
-|`bt_display_name`|String|"Libotoy"|BT device name.  Currently emulates MonsterPub device for Xtoys compatibility.|
-|`bt_on`|Boolean|true|Enable BT connectivity.|
-|`force_bt_coex`|Boolean|false|Force BT and WiFi at the same time.|
-|`led_brightness`|Byte|128|Status LED maximum brightness.|
-|`websocket_port`|Int|80|Port to listen for incoming Websocket connections.|
-|`use_ssl`|Boolean|true|Enable SSL server, which is a bit annoying to accept unsigned certificates but required for xtoys compatibility|
-|`hostname`|String|"eom3k"|Local hostname for your device.|
-|`chart_window_s`|Int|5|The number of seconds to display in the chart history.  Higher numbers can cause sluggish behavior on slower devices|
-|`max_denied`|Int|20|Maximum number of denials before forcing an orgasm (in orgasm mode).|
-|`initial_pleasure`|Byte|10|The minimum speed the motor will start at in endless & orgasm mode.|
-|`max_pleasure`|Byte|255|Maximum speed for the motor in auto-ramp mode.|
-|`motor_ramp_time_s`|Int|30|The time it takes for the motor to reach Motor Max Speed in endless & orgasm mode.|
-|`edge_delay`|Int|10|Minimum time (s) after edge detection before resuming stimulation.|
-|`max_additional_delay`|Int|10|Maximum time (s) that can be added to the edge delay before resuming stimulation. A random number will be picked between 0 and this setting each cycle. 0 to disable.|
-|`minimum_on_time`|Int|1|Time (s) after stimulation starts before edge detection is resumed.|
-|`pressure_smoothing`|Byte|5|Number of samples to take an average of. Higher results in lag and lower resolution!|
-|`classic_serial`|Boolean|false|Output continuous stream of arousal data over serial for backwards compatibility with other software.|
-|`sensitivity_threshold`|12 bit Int (4096)|1024|The arousal threshold for orgasm detection. Lower values stop sooner.|
-|`mid_threshold`|12 bit Int (4096)|512| The start of the warning zone for approaching arousal.  Changes lights to yellow.|
-|`update_frequency_hz`|Int|50|Update frequency for pressure readings and arousal steps. Higher = crash your serial monitor.|
-|`sensor_sensitivity`|Byte|128|Pressure sensor prescaling.|
-|`use_average_values`|Boolean|false|Use average values when calculating arousal. This smooths noisy data.|
-|`vibration_mode`|VibrationMode|RampStop|Vibration Mode for main vibrator control.|
-|`use_post_orgasm`|Boolean|false|Use post-orgasm torture mode and functionality.|
-|`clench_pressure_sensitivity`|Int|200|Minimum additional Arousal level to detect clench. See manual.|
-|`clench_time_to_orgasm_ms`|Int|1500|Threshold variable that is milliseconds count of clench to detect orgasm. See manual.|
-|`clench_detector_in_edging`|Boolean|false|Use the clench detector to adjust Arousal. See manual.|
-|`auto_edging_duration_minutes`|Int|30|How long to edge before permiting an orgasm.|
-|`post_orgasm_duration_seconds`|Int|10|How long to stimulate after orgasm detected.|
-|`edge_menu_lock`|Boolean|false|Deny access to menu starting in the edging session.|
-|`post_orgasm_menu_lock`|Boolean|false|Deny access to menu starting after orgasm detected.|
-|`max_clench_duration_ms`|Int|3000|Duration the clench detector can raise arousal if clench detector turned on in edging session.|
-|`clench_time_threshold_ms`|Int|900|Threshold variable that is milliseconds counts to detect the start of clench.|
+|Key|Default|Description|
+|---|---|---|
+|`wifi_on`|false|Enable WiFi, the web UI and the WebSocket API|
+|`wifi_ap_mode`|true|Start the device's own network instead of joining `wifi_ssid`. Also used if joining fails|
+|`wifi_ssid`, `wifi_key`|""|Network to join when `wifi_ap_mode` is false|
+|`ap_ssid`, `ap_password`|"EOM", ""|The device's own network. An empty password means open, otherwise use 8 or more characters|
+|`ap_channel`, `ap_max_connections`|1, 4|Access point settings|
+|`hostname`|"eom"|The device answers on `http://<hostname>.local`|
+|`websocket_port`|80|Port for the UI and WebSocket API|
+|`bt_on`|true|Enable Bluetooth|
+|`bt_display_name`|"Libotoy"|Bluetooth name. The UI looks for names starting with Libotoy|
+|`classic_serial`|false|Print `pressure,arousal,pleasure,threshold,clench threshold,clench ms,denied` lines on the serial port|
+|`chart_window_s`|5|Seconds of history shown in the UI chart|
+|`vibration_mode`|2|1 Ramp-Stop, 2 Depletion, 3 Enhancement (see README)|
+|`initial_pleasure`|10|Pleasure (0-255) when stimulation starts|
+|`max_pleasure`|255|Maximum pleasure|
+|`motor_ramp_time_s`|120|Seconds to ramp from initial to maximum pleasure|
+|`sensitivity_threshold`|1024|Arousal (0-4095) that counts as an edge. Lower stops sooner|
+|`mid_threshold`|512|Arousal where the LED starts turning from orange to red|
+|`edge_delay`|10|Seconds to wait after an edge before pleasure resumes|
+|`max_additional_delay`|10|Up to this many random seconds are added to `edge_delay`|
+|`minimum_on_time`|1|Seconds after pleasure resumes before edges are detected again|
+|`max_denied`|20|In orgasm mode, allow an orgasm after this many edges. 0 or 100 = no limit|
+|`auto_edging_duration_minutes`|30|In orgasm mode, allow an orgasm after this many minutes|
+|`post_orgasm_duration_seconds`|10|Seconds of full pleasure after an orgasm is detected, before switching to manual|
+|`update_frequency_hz`|50|Pressure readings per second|
+|`pressure_smoothing`|10|Readings in the running average|
+|`use_average_values`|true|Detect arousal from the running average instead of single readings|
+|`sensor_sensitivity`|50|Analog sensors: ADC range, 0-24 about 3.1 V, 25-49 about 1.75 V, 50-74 about 1.25 V, 75-100 about 0.95 V full scale. Pick the smallest range your sensor's output stays under. MPR sensors: gain in percent|
+|`clench_pressure_sensitivity`|300|Pressure rise that counts as a clench|
+|`clench_time_threshold_ms`|900|A clench this long raises arousal, if `clench_detector_in_edging` is on|
+|`max_clench_duration_ms`|3000|Clenches longer than this stop raising arousal|
+|`clench_time_to_orgasm_ms`|1500|Once an orgasm is permitted, a clench this long counts as the orgasm|
+|`clench_detector_in_edging`|false|Let clenches raise arousal while edging|
