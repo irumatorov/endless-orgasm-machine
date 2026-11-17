@@ -27,7 +27,7 @@
   
   let { BTLEDconnected = $bindable(false) }: Props = $props();
   let BTLEDstatus = $state("No lights connected");
-  let keepAliveInterval: NodeJS.Timeout | null = null;
+  let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
 
   async function connectBluetooth() {
     try {

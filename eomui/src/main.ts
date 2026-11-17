@@ -3,13 +3,7 @@ import './app.css'
 import App from './App.svelte'
 import { Buffer } from 'buffer'
 
-// Polyfill Buffer for Buttplug library
-globalThis.Buffer = Buffer
+// The Buttplug client expects Node's Buffer.
+(globalThis as any).Buffer = Buffer
 
-if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
-
-const app = mount(App, {
-  target: document.getElementById('app')!,
-})
-
-export default app
+export default mount(App, { target: document.getElementById('app')! })

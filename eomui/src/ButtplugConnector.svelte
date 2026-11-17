@@ -2,9 +2,9 @@
   import { onMount } from "svelte";
   // @ts-ignore - local prebuilt module does not expose complete TS typings for this path
   import { ButtplugWasmClientConnector } from "../buttplug/wasm/buttplug-wasm.mjs";
-import { ButtplugClient, ButtplugClientDevice, DeviceOutput, OutputType, InputType, DeviceOutputCommand } from "../../../satvisor/buttplug-js/js/src/index.js";
-import {  ButtplugClientDeviceFeature } from "../../../satvisor/buttplug-js/js/src/client/ButtplugClientDeviceFeature.js";
-import type { ButtplugMessage } from "../../../satvisor/buttplug-js/js/src/core/Messages.js";
+  import { ButtplugClient, ButtplugClientDevice, DeviceOutput, OutputType, InputType, DeviceOutputCommand } from "../buttplug/buttplug.mjs";
+  type ButtplugClientDeviceFeature = any;
+  type ButtplugMessage = any;
 import { BleClient } from "@capacitor-community/bluetooth-le";
 
   const isCapacitorNative =
@@ -559,7 +559,7 @@ import { BleClient } from "@capacitor-community/bluetooth-le";
           }],
         },
       } as unknown as ButtplugMessage)
-      .catch((err) => console.error(`Error sending command to device ${device.name}:`, err));
+      .catch((err: unknown) => console.error(`Error sending command to device ${device.name}:`, err));
   }
 </script>
 

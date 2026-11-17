@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { Action } from "svelte/action";
-    import { run } from "svelte/legacy";
   import { Capacitor } from '@capacitor/core';
   import { BleClient } from '@capacitor-community/bluetooth-le';
   import BTLED from "./BTLED.svelte";
@@ -18,22 +17,14 @@
   // Detect if running on iOS or Android via Capacitor
   const isNativeMobile = Capacitor.getPlatform() === 'ios' || Capacitor.getPlatform() === 'android';
 
-  let isSSL = window.location.protocol === "https:";
+  // When the EOM serves this page, its WebSocket API is on the same host.
+  // Otherwise default to the EOM's access point address; "Connect" lets the user change it.
+  const servedByEom =
+    window.location.protocol === "http:" &&
+    !["localhost", "127.0.0.1"].includes(window.location.hostname);
   let wssUrl = $state(
-    window.location
-      .toString()
-      .replace("/ui","/")
-      .replace(/http(s?):\/\//, isSSL ? "wss://" : "ws://")
-      .replace(/^(wss?:\/\/)[^\/:]+(:\d+)?(\/.*)?$/, (match, protocol, port, path) => {
-        const host = match.replace(protocol, '').replace(port || '', '').replace(path || '', '');
-        const isIP = /^\d+\.\d+\.\d+\.\d+$/.test(host);
-        return protocol + (isIP ? host : "192.168.4.1");  //replace with your local ip for dev convenience
-      }), 
-      //If not in AP mode update to match your EOM's IP address...useful for local testing
+    servedByEom ? `ws://${window.location.host}/` : "ws://192.168.4.1/"
   ) as string;
-  if ((window.location.toString().match(/\.\d+\/?$/) ?? []).length > 0) {
-    window.location.replace(window.location.toString() + "ws");
-  }
 
   type eomReading = {
     arousal: number;
@@ -106,7 +97,6 @@
     auto_edging_duration_minutes: settingType;
     post_orgasm_duration_seconds: settingType;
     use_average_values: settingType;
-    use_post_orgasm: settingType;
     chart_window_s: settingType;
     max_denied: settingType;
   };
@@ -316,14 +306,6 @@
       type: "yes/no",
       description: "Enable clench detection while in edging mode.",
     },
-    use_post_orgasm: { 
-      value: 1, 
-      min: 0, 
-      max: 1, 
-      label: "Use Post Orgasm",
-      type: "yes/no",
-      description: "Use post-orgasm torture mode and functionality.",
-    },
     use_average_values: {
       value: 1,
       min: 0,
@@ -366,7 +348,6 @@
     "clench_detector_in_edging",
     "max_clench_duration_ms",
     "post_orgasm_duration_seconds",
-    "use_post_orgasm",
     "use_average_values",
   ];
 
@@ -697,16 +678,54 @@
         console.warn("Received data missing expected fields:", wsMsg);
         return;
       }
-      wsMsg.pleasure = wsMsg.motor; //backwards compatibilitypermitpermit
-      wsMsg.localTime = Date.now();
-      readings.push(wsMsg);
-      //currentPleasure = getNumericValue(wsMsg, "pleasure");
-      console.log("chart length:",settings.chart_window_s.value, wsMsg.millis - (readings[0].millis ?? 0), Date.now() - (readings[0].localTime ?? 0));
-
-      scheduleChartUpdate();
+      wsMsg.pleasure = wsMsg.motor;
+      addReading(wsMsg);
     } catch (error) {
       console.error("Error parsing WebSocket message:", error);
     }
+  }
+
+  // Adds a reading, drops readings older than the chart window and updates connected toys.
+  function addReading(reading: eomReading) {
+    reading.localTime = Date.now();
+    readings.push(reading);
+
+    const windowMs = settings.chart_window_s.value * 1000;
+    while (
+      readings.length > 1 &&
+      (reading.millis - (readings[0].millis ?? 0) > windowMs ||
+        reading.localTime - (readings[0].localTime ?? 0) > windowMs)
+    ) {
+      readings.shift();
+    }
+
+    currentPleasure = Number(reading.pleasure ?? reading.motor);
+    updateDevices(reading);
+    scheduleChartUpdate();
+  }
+
+  // Reconnects when no reading has arrived for 10 seconds.
+  let staleCheck: ReturnType<typeof setInterval> | undefined;
+  function startStaleCheck() {
+    clearInterval(staleCheck);
+    staleCheck = setInterval(() => {
+      const last = readings[readings.length - 1]?.localTime ?? 0;
+      if (!(isWsConnected || isBtConnected) || Date.now() - last < 10000) return;
+
+      console.log("No data for 10 s, reconnecting");
+      if (lastConnection == "ws") {
+        isWsConnected = false;
+        socket.close();
+        socket = new WebSocket(wssUrl);
+        initializeWebSocket(socket);
+      } else {
+        isBtConnected = false;
+        syncDelta = 0;
+        if (btDeviceId) {
+          BleClient.disconnect(btDeviceId).catch(err => console.error('Error disconnecting BT:', err));
+        }
+      }
+    }, 5000);
   }
 
   function handleOpen() {
@@ -721,29 +740,7 @@
     socket.send(msg);
     socket.send(JSON.stringify({ streamReadings: null }));
     scheduleChartUpdate();
-
-    setInterval(() => {
-      let lastReadingTime = $state.snapshot(readings)[$state.snapshot(readings).length - 1].localTime ?? 0;
-      if (Date.now() - lastReadingTime > 10000) { // 10 seconds threshold
-        console.log("Data is stale...dropped connection?");
-        if (lastConnection == "ws") {
-          console.log("Reconnecting WebSocket...");
-          isWsConnected = false;
-          socket.close();
-          socket = new WebSocket(wssUrl);
-          initializeWebSocket(socket);
-          console.log("Reconnecting to ", wssUrl, socket);
-        } else {
-          //should I just let bluetooth handle its state by itself?
-          isBtConnected = false;
-          syncDelta = 0;
-          if (btDeviceId) {
-            BleClient.disconnect(btDeviceId).catch(err => console.error('Error disconnecting BT:', err));
-          }
-        }
-      }
-    }, 5000); // Check for stale data every 5 seconds
-
+    startStaleCheck();
   }
 
   function handleError(event: Event) {
@@ -786,7 +783,7 @@
       let btData;
       if (setting_name == "setMotor") {
         let currentPleasure: number = setting_name == "setMotor" ? Number(value) : lastNumericValue("pleasure");
-        btData = new Uint8Array([0x01,currentMode, 0, 0, Number(currentPleasure)]);
+        btData = new Uint8Array([0x01, runModes.indexOf("MANUAL"), 0, 0, Number(currentPleasure)]);
       } else {
         //pleasure amount is optional at end of byte array
         btData = new Uint8Array([
@@ -883,21 +880,11 @@
   };
 
   onMount(() => {
-    //socket = new WebSocket(wssUrl);
-    //initializeWebSocket(socket);
-
-    setInterval(() => {
-      console.log($state.snapshot(isWsConnected),isWsConnected,$state.snapshot(isBtConnected),isBtConnected);
-      if (!(isWsConnected || isBtConnected)) {
-        console.log("Not connected");
-        //return;
-      }
-      console.log(
-        "Current readings:",
-        $state.snapshot(readings).length,
-        $state.snapshot(readings)[$state.snapshot(readings).length - 1],
-      );
-    }, 30000); // Log every 30 seconds
+    if (servedByEom) {
+      lastConnection = "ws";
+      socket = new WebSocket(wssUrl);
+      initializeWebSocket(socket);
+    }
   });
 
   function handleConnect() {
@@ -1083,12 +1070,11 @@
                       denied: data[5],
                       runMode: runModes[data[6]] ?? "ENDLESS",
                       pleasureMode: data[7],
-                      permit: data[8] * 255 + (data[9] ?? 0),
+                      permit: data[8] * 256 + (data[9] ?? 0),
                       color: String(data[10]) + String(data[11]) + String(data[12]),
                       millis: (((data[13] << 24) | (data[14] << 16) | (data[15] << 8) | data[16]) >>> 0),
                       localTime: Date.now(),
                     };
-                    readings.push(newReading);
                     if (!syncDelta) syncDelta = (newReading.localTime ?? Date.now()) - newReading.millis;
 
 
@@ -1100,24 +1086,7 @@
                       btledComponent.writeRGB(r, g, b).catch((err: any) => console.error('Failed to write RGB:', err));
                     }
 
-                    updateDevices(newReading);
-
-                    const cutoffTime = Date.now() - syncDelta - settings.chart_window_s.value * 1000;
-                    const firstValidIndex = readings.findIndex(r => ((r.millis ?? 0) >= cutoffTime) || ((r.localTime ?? 0) >= Date.now() - settings.chart_window_s.value * 1000));
-                    if (firstValidIndex > 0) {
-                      readings = readings.slice(firstValidIndex);
-                    }
-
-                    while (
-                      readings.length > 0 &&
-                        ((newReading.millis - (readings[0].millis ?? 0) > settings.chart_window_s.value * 1000) ||  //the first and last reading are more than chartWindow seconds apart
-                        (Date.now() - (readings[0].localTime ?? 0) > settings.chart_window_s.value * 1000))  //the first reading is older than chartWindow seconds
-                    ) {
-                      readings.shift();
-                    }
-
-            currentPleasure = Number(newReading.pleasure);
-            scheduleChartUpdate();
+                    addReading(newReading);
           }
         );
         console.log('Notifications started for readings characteristic');

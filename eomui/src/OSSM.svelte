@@ -678,6 +678,7 @@
             pointer-events: none;
             cursor: pointer;
             -webkit-appearance: none;
+            appearance: none;
         }
 
 
